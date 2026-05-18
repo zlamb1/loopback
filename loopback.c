@@ -17,6 +17,7 @@
 */
 
 #include <linux/init.h>
+#include <linux/minmax.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -77,6 +78,9 @@ static ssize_t loopback_read(struct file *file, char __user *user_buffer,
   char c, buf[BUF_LEN];
   size_t n = size;
 
+  if (!size)
+    return 0;
+
   err = mutex_lock_interruptible(&this_data->lock);
   if (err)
     return err;
@@ -85,7 +89,7 @@ static ssize_t loopback_read(struct file *file, char __user *user_buffer,
 
   memset(buf, c, BUF_LEN);
   while (n) {
-    size_t to_write = n > BUF_LEN ? BUF_LEN : n;
+    size_t to_write = min(n, BUF_LEN);
     if (copy_to_user(user_buffer, buf, to_write))
       return -EFAULT;
     user_buffer += to_write;
