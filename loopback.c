@@ -109,7 +109,7 @@ static ssize_t loopback_read(struct file *file, char __user *user_buffer,
   c = this_data->last;
   mutex_unlock(&this_data->lock);
 
-  memset(buf, c, 64);
+  memset(buf, c, BUF_LEN);
   while (n) {
     size_t to_write = n > BUF_LEN ? BUF_LEN : n;
     if (copy_to_user(user_buffer, buf, to_write))
