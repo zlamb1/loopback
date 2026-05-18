@@ -16,13 +16,10 @@
    <https://www.gnu.org/licenses/>.
 */
 
-#include <linux/cdev.h>
-#include <linux/device.h>
-#include <linux/fs.h>
 #include <linux/init.h>
+#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/printk.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
 
@@ -30,15 +27,12 @@
 #define MINORS 1
 
 struct loopback_data {
-  struct cdev cdev;
+  struct miscdevice mdev;
   struct mutex lock;
   char last;
 };
 
-static dev_t dev;
 static struct loopback_data data;
-static struct class *class;
-static struct device *device;
 
 static int loopback_open(struct inode *, struct file *);
 static ssize_t loopback_read(struct file *, char __user *, size_t, loff_t *);
@@ -55,39 +49,19 @@ static const struct file_operations fops = {
 static int __init loopback_init(void) {
   int err;
 
-  err = alloc_chrdev_region(&dev, 0, MINORS, NAME);
-  if (err)
-    return err;
-
-  cdev_init(&data.cdev, &fops);
-  err = cdev_add(&data.cdev, dev, 1);
-  if (err)
-    goto out3;
-
+  data.mdev = (struct miscdevice){
+      .fops = &fops,
+      .name = NAME,
+      .minor = MISC_DYNAMIC_MINOR,
+  };
   mutex_init(&data.lock);
   data.last = 0;
 
-  class = class_create(NAME);
-  if (IS_ERR(class)) {
-    err = PTR_ERR(class);
-    goto out2;
-  }
-
-  device = device_create(class, NULL, dev, &data, NAME);
-  if (IS_ERR(device)) {
-    err = PTR_ERR(device);
-    goto out1;
-  }
+  err = misc_register(&data.mdev);
+  if (err)
+    return err;
 
   return 0;
-
-out1:
-  class_destroy(class);
-out2:
-  cdev_del(&data.cdev);
-out3:
-  unregister_chrdev_region(dev, MINORS);
-  return err;
 }
 
 static int loopback_open(struct inode *inode, struct file *file) {
@@ -99,7 +73,7 @@ static ssize_t loopback_read(struct file *file, char __user *user_buffer,
                              size_t size, loff_t *offset) {
   struct loopback_data *this_data = file->private_data;
   int err;
-#define BUF_LEN 64
+#define BUF_LEN 128
   char c, buf[BUF_LEN];
   size_t n = size;
 
@@ -142,12 +116,7 @@ static ssize_t loopback_write(struct file *file, const char __user *user_buffer,
   return size;
 }
 
-static void __exit loopback_exit(void) {
-  device_destroy(class, dev);
-  class_destroy(class);
-  cdev_del(&data.cdev);
-  unregister_chrdev_region(dev, MINORS);
-}
+static void __exit loopback_exit(void) { misc_deregister(&data.mdev); }
 
 module_init(loopback_init);
 module_exit(loopback_exit);
